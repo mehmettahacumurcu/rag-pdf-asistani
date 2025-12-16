@@ -1,0 +1,42 @@
+# --- PYTHON & SISTEM ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.DS_Store
+Thumbs.db
+
+# --- SANAL ORTAMLAR & GİZLİLİK ---
+.env
+.venv
+venv/
+env/
+
+# --- JUPYTER NOTEBOOKS ---
+.ipynb_checkpoints/
+
+# --- HUGGINGFACE & AI CACHE ---
+.cache/
+huggingface/
+
+# --- PROJE VERİLERİ  ---
+# Yüklenen PDF'lerin olduğu klasör
+pdfs/
+# Oluşturulan vektör veritabanı dosyaları
+vectors/
+# Vektör pickle dosyaları 
+*.pkl
+*.index
+*.npy
+
+# --- FRONTEND (Node/React) ---
+node_modules/
+dist/
+build/
+*/node_modules/
+
+# --- YEREL ARAÇLAR VE SCRIPTLER ---
+# Ngrok programı 
+ngrok.exe
+# Sunucu başlatma dosyası 
+baslat_server.bat

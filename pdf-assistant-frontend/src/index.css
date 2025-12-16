@@ -1,0 +1,228 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #e5e7eb;
+  background: #0f172a;
+}
+body { min-height: 100vh; }
+
+.app-root {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100vh;
+}
+
+/* SIDEBAR */
+.sidebar {
+  background: #020617;
+  padding: 20px;
+  border-right: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+.logo {
+  font-size: 18px;
+  font-weight: bold;
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-section h3 {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Model Seçimi */
+.model-select {
+  width: 100%;
+  padding: 10px;
+  background: #1e293b;
+  color: white;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Upload */
+.upload-section {
+  background: #1e293b;
+  padding: 12px;
+  border-radius: 8px;
+}
+.upload-section input[type="file"] {
+  font-size: 11px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.offset-control {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.offset-control input {
+  width: 50px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: white;
+  padding: 4px;
+  text-align: center;
+  border-radius: 4px;
+}
+.upload-btn {
+  width: 100%;
+  padding: 8px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.upload-btn:hover:not(:disabled) { background: #1d4ed8; }
+.upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Dosya Listesi */
+.file-list {
+  list-style: none;
+  max-height: 250px;
+  overflow-y: auto;
+}
+.file-list li {
+  margin-bottom: 6px;
+}
+.file-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.file-list label:hover { background: #1e293b; }
+
+/* CHAT ALANI */
+.chat-wrapper {
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(circle at top right, #1e293b, #0f172a);
+}
+.chat-header {
+  padding: 20px;
+  border-bottom: 1px solid #1e293b;
+}
+.chat-header h1 { font-size: 20px; margin-bottom: 4px; }
+.chat-header p { font-size: 13px; color: #94a3b8; }
+
+.chat-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow: hidden;
+}
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 20px;
+}
+
+.empty-state {
+  text-align: center;
+  margin-top: 100px;
+  color: #64748b;
+}
+
+/* Mesaj Balonları */
+.message-row { display: flex; gap: 12px; }
+.message-user { flex-direction: row-reverse; }
+.avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: #334155;
+  display: flex; align-items: center; justify-content: center;
+}
+.bubble {
+  max-width: 75%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  line-height: 1.5;
+  font-size: 14px;
+}
+.message-user .bubble {
+  background: #2563eb;
+  color: white;
+  border-top-right-radius: 2px;
+}
+.message-assistant .bubble {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-top-left-radius: 2px;
+}
+
+/* Kaynak Kutusu */
+.sources-block {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #475569;
+  font-size: 12px;
+}
+.sources-title { font-weight: bold; margin-bottom: 4px; color: #94a3b8; }
+.sources-block ul { list-style: none; }
+.sources-block li { margin-bottom: 4px; color: #cbd5f5; }
+.source-preview { color: #64748b; font-style: italic; }
+
+/* Input */
+.input-bar {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+}
+.input-bar input {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: white;
+  outline: none;
+}
+.input-bar input:focus { border-color: #2563eb; }
+.input-bar button {
+  padding: 0 24px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.input-bar button:disabled { opacity: 0.6; }
+
+.loading { color: #94a3b8; font-size: 12px; margin-left: 44px; }
+
+/* Bu kısımları existing CSS'in sonuna ekle veya varsa güncelle */
+.setting-group {
+    margin-bottom: 8px;
+}
+.setting-label {
+    display: block;
+    font-size: 11px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+}
