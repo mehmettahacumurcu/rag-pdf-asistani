@@ -6,8 +6,11 @@ function App() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   
-  // Model Seçimi
+  // --- MODEL AYARLARI ---
+  // LLM (Cevap veren zeka)
   const [selectedModel, setSelectedModel] = useState("llama3.1");
+  // Embedding (Metni anlayan zeka) - Varsayılan E5
+  const [embeddingModel, setEmbeddingModel] = useState("e5-base");
 
   // Server Ayarları (Ngrok)
   const [serverUrl, setServerUrl] = useState(""); 
@@ -21,13 +24,15 @@ function App() {
   const [offset, setOffset] = useState(0);
   const [uploading, setUploading] = useState(false);
 
+  // Embedding modeli değiştiğinde dosya listesini yenile
   useEffect(() => {
     fetchFiles();
-  }, []);
+  }, [embeddingModel]);
 
   const fetchFiles = async () => {
     try {
-      const res = await fetch("http://localhost:5000/files");
+      // Backend'e hangi modelin klasörüne bakacağını söylüyoruz
+      const res = await fetch(`http://localhost:5000/files?model_key=${embeddingModel}`);
       const data = await res.json();
       setAvailableFiles(data);
     } catch (err) {
@@ -42,6 +47,8 @@ function App() {
     const formData = new FormData();
     formData.append("file", uploadFile);
     formData.append("offset", offset);
+    // Backend'e hangi model ile vektörleştireceğini söylüyoruz
+    formData.append("embedding_model", embeddingModel);
 
     let logs = "";
 
@@ -51,7 +58,7 @@ function App() {
         method: "POST",
         body: formData,
       });
-      if (resLocal.ok) logs += "✅ Laptop hafızasına alındı.\n";
+      if (resLocal.ok) logs += `✅ Laptop: Dosya "${embeddingModel}" formatında işlendi.\n`;
       else logs += "❌ Laptop yüklemesi başarısız.\n";
 
       // 2. Server URL varsa Oraya da Yükle
@@ -62,8 +69,8 @@ function App() {
             method: "POST",
             body: formData,
           });
-          if (resServer.ok) logs += "✅ EVDEKİ PC hafızasına alındı.\n";
-          else logs += "❌ EVDEKİ PC yüklemesi başarısız.\n";
+          if (resServer.ok) logs += `✅ EV PC: Dosya "${embeddingModel}" formatında işlendi.\n`;
+          else logs += "❌ EV PC yüklemesi başarısız.\n";
         } catch (e) {
           logs += "⚠️ Evdeki PC'ye ulaşılamadı.\n";
         }
@@ -72,7 +79,7 @@ function App() {
       alert(logs);
       setUploadFile(null);
       setOffset(0);
-      fetchFiles();
+      fetchFiles(); // Listeyi yenile
 
     } catch (err) {
       alert("Yükleme hatası.");
@@ -109,7 +116,8 @@ function App() {
         body: JSON.stringify({
           question: input,
           selected_files: selectedFiles,
-          model_name: selectedModel
+          model_name: selectedModel,     // LLM (Qwen/Llama)
+          embedding_model: embeddingModel // Embedding (E5/MiniLM)
         }),
       });
 
@@ -148,8 +156,28 @@ function App() {
         <div className="sidebar-section">
           <h3>⚙️ Ayarlar</h3>
           
+          {/* EMBEDDING MODEL SEÇİMİ (YENİ) */}
           <div className="setting-group">
-            <label className="setting-label">Yapay Zeka Modeli:</label>
+            <label className="setting-label">🧠 Embedding (Hafıza):</label>
+            <select 
+              value={embeddingModel} 
+              onChange={(e) => {
+                setEmbeddingModel(e.target.value);
+                setSelectedFiles([]); // Model değişince seçimleri temizle
+              }}
+              className="model-select"
+              
+            >
+              <option value="e5-base">E5-Base (Önerilen - Akıllı) 🌟</option>
+              <option value="minilm">MiniLM (Hızlı - Eski)</option>
+            </select>
+            <p style={{fontSize:"9px", color:"#666", marginTop:"2px"}}>
+              *Değişince dosya listesi yenilenir.
+            </p>
+          </div>
+
+          <div className="setting-group">
+            <label className="setting-label">🤖 Yapay Zeka (LLM):</label>
             <select 
               value={selectedModel} 
               onChange={(e) => setSelectedModel(e.target.value)}
@@ -157,10 +185,9 @@ function App() {
             >
               <option value="llama3.1">Llama 3.1 (8B)</option>
               <option value="qwen2.5:3b">Qwen 2.5 (3B) - Hızlı</option>
-              {/* YENİ MODEL EKLENDİ BURAYA */}
-              <option value="qwen2.5:14b">Qwen 2.5 (14B) - Türkçe Dehası (Ağır) 🇹🇷</option>
+              <option value="qwen2.5:14b">Qwen 2.5 (14B) - Türkçe (Ağır)</option>
               <option value="mistral-nemo">Mistral NeMo (12B)</option>
-              <option value="solar">Solar (10.7B) 🇺🇸</option>
+              <option value="solar">Solar (10.7B)</option>
             </select>
           </div>
 
@@ -180,7 +207,7 @@ function App() {
         <div className="sidebar-section upload-section">
           <h3>📤 PDF Yükle</h3>
           <p style={{fontSize:'10px', color:'#64748b', marginBottom:'5px'}}>
-            (Server URL giriliyse ikisine de yüklenir)
+            (Seçili Embedding Modeli ile işlenir)
           </p>
           <input type="file" accept=".pdf" onChange={(e) => setUploadFile(e.target.files[0])} />
           <div className="offset-control">
@@ -193,8 +220,8 @@ function App() {
         </div>
 
         <div className="sidebar-section file-list-section">
-          <h3>📂 Belgelerim (Laptop)</h3>
-          {availableFiles.length === 0 ? <p className="no-files">Dosya yok.</p> : (
+          <h3>📂 Belgeler ({embeddingModel})</h3>
+          {availableFiles.length === 0 ? <p className="no-files">Bu model için işlenmiş dosya yok.</p> : (
             <ul className="file-list">
               {availableFiles.map((f) => (
                 <li key={f}>
@@ -213,7 +240,9 @@ function App() {
         <header className="chat-header">
           <h1>Dokümanlarınla Konuş</h1>
           <p>
-            {selectedFiles.length} belge seçili | Model: <strong>{selectedModel}</strong>
+            {selectedFiles.length} belge seçili | 
+            Hafıza: <strong>{embeddingModel}</strong> | 
+            Zeka: <strong>{selectedModel}</strong>
           </p>
         </header>
 
@@ -223,6 +252,9 @@ function App() {
               <div className="empty-state">
                 <h2>Merhaba! 👋</h2>
                 <p>Belgelerini seç ve sohbete başla.</p>
+                <p style={{fontSize:"12px", color:"#888", marginTop:"10px"}}>
+                   E5-Base modeli ile daha akıllı sonuçlar alabilirsiniz.
+                </p>
               </div>
             )}
             {messages.map((m, idx) => (
