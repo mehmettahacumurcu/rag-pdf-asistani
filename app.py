@@ -3,7 +3,6 @@ import fitz  # PyMuPDF
 import pandas as pd
 import numpy as np
 import torch
-import pickle
 import ollama
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -16,115 +15,172 @@ VECTORS_FOLDER = "vectors"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(VECTORS_FOLDER, exist_ok=True)
 
-# MULTILINGUAL EMBEDDING MODELİ
-# Türkçe ve İngilizceyi aynı uzayda anlar.
-EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-
 app = Flask(__name__)
 CORS(app)
 
-# Modeli bellekte tutmak için global değişken
-embedding_model = None
+# --- MODEL YÖNETİMİ ---
+# Desteklenen Modeller
+AVAILABLE_MODELS = {
+    "minilm": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", # Hızlı, 128 Token
+    "e5-base": "intfloat/multilingual-e5-base" # Akıllı, 512 Token (Önerilen)
+}
 
-def get_embedding_model():
-    global embedding_model
-    if embedding_model is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"[INIT] Embedding modeli yükleniyor ({device})...")
-        embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME, device=device)
+# Global değişkenler (Hafıza Yönetimi İçin)
+embedding_model = None
+current_model_key = None
+
+def get_embedding_model(model_key="e5-base"):
+    global embedding_model, current_model_key
+    
+    # İstenen modelin HuggingFace ID'sini al
+    target_model_name = AVAILABLE_MODELS.get(model_key, AVAILABLE_MODELS["e5-base"])
+    
+    # Eğer model zaten yüklüyse ve aynısıysa tekrar yükleme
+    if embedding_model is not None and current_model_key == model_key:
+        return embedding_model
+    
+    # Farklı bir model istendiyse, Eskisini Sil (VRAM Temizliği 🧹)
+    if embedding_model is not None:
+        print(f"[MEMORY] {current_model_key} hafızadan siliniyor...")
+        del embedding_model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"[INIT] Yeni model yükleniyor: {model_key} ({device})...")
+    
+    embedding_model = SentenceTransformer(target_model_name, device=device)
+    current_model_key = model_key
     return embedding_model
 
-# --- PDF İŞLEME ---
-
-def process_and_save_pdf(file_path, filename, offset=0):
-    """PDF'i okur, chunklara böler, vektörleştirir ve kaydeder."""
-    model = get_embedding_model()
-    doc = fitz.open(file_path)
+# --- METİN PARÇALAMA (CHUNKING) ---
+def chunk_text(text, chunk_size=500, overlap=100):
+    """
+    Metni karakter sayısına göre böler (Token sınırını aşmamak için).
+    Örtüşme (overlap) sayesinde cümleler bölünse bile anlam kaybı olmaz.
+    """
     chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        
+        # Kelime ortasından bölmemek için en yakın boşluğu bul
+        if end < len(text):
+            last_space = text.rfind(' ', start, end)
+            if last_space != -1:
+                end = last_space
+        
+        chunk = text[start:end].strip()
+        if len(chunk) > 30: # Çok kısa çöp parçaları alma
+            chunks.append(chunk)
+        
+        # Bir sonraki parça için overlap kadar geri git
+        start = end - overlap
+        if start >= len(text): break
+        
+    return chunks
+
+# --- PDF İŞLEME ---
+def process_and_save_pdf(file_path, filename, model_key="e5-base", offset=0):
+    """PDF'i okur, chunklara böler, SEÇİLEN MODELE göre vektörleştirir."""
+    model = get_embedding_model(model_key)
+    doc = fitz.open(file_path)
+    chunks_data = []
     
-    print(f"[PROCESS] {filename} işleniyor. Ofset: {offset}")
+    print(f"[PROCESS] {filename} işleniyor ({model_key})...")
     
     for page_num, page in enumerate(doc):
-        if page_num < offset: # Ofset kontrolü
-            continue
+        if page_num < offset: continue
             
         text = page.get_text().replace("\n", " ").strip()
-        if len(text) < 50: continue # Boş sayfaları atla
+        if len(text) < 50: continue
 
-        # Cümle bazlı chunking (10 cümlelik bloklar)
-        sentences = text.split(". ")
-        chunk_size = 10
+        # Karakter bazlı chunking (Eski cümle bazlı sistem yerine)
+        text_chunks = chunk_text(text, chunk_size=500, overlap=100)
         
-        for i in range(0, len(sentences), chunk_size):
-            chunk_text = ". ".join(sentences[i:i+chunk_size])
-            if len(chunk_text) < 30: continue
-            
-            chunks.append({
+        for chunk in text_chunks:
+            chunks_data.append({
                 "filename": filename,
                 "page_number": page_num + 1,
-                "text": chunk_text
+                "text": chunk
             })
 
-    if not chunks:
+    if not chunks_data:
         return False, "PDF'den metin çıkarılamadı."
 
-    print(f"[EMBED] {len(chunks)} parça vektöre çevriliyor...")
-    df = pd.DataFrame(chunks)
+    print(f"[EMBED] {len(chunks_data)} parça vektöre çevriliyor...")
+    df = pd.DataFrame(chunks_data)
     
-    # Embedding hesapla ve listeye çevir
-    embeddings = model.encode(df["text"].tolist(), show_progress_bar=True)
+    # --- E5 İÇİN ÖZEL PREFIX AYARI ---
+    if "e5" in model_key:
+        # E5 modelleri "passage: " etiketi ister
+        texts_to_embed = ["passage: " + t for t in df["text"].tolist()]
+        # E5 için normalize_embeddings=True önerilir
+        embeddings = model.encode(texts_to_embed, show_progress_bar=True, normalize_embeddings=True)
+    else:
+        # MiniLM için direkt metni veriyoruz
+        embeddings = model.encode(df["text"].tolist(), show_progress_bar=True)
+        
     df["embedding"] = list(embeddings)
     
-    # Pickle olarak kaydet
-    save_path = os.path.join(VECTORS_FOLDER, f"{filename}.pkl")
+    # --- KLASÖRLEME (MODEL BAZLI) ---
+    # vectors/e5-base/dosya.pkl  veya  vectors/minilm/dosya.pkl
+    model_folder = os.path.join(VECTORS_FOLDER, model_key)
+    os.makedirs(model_folder, exist_ok=True)
+    
+    save_path = os.path.join(model_folder, f"{filename}.pkl")
     df.to_pickle(save_path)
     
-    return True, f"{len(chunks)} parça işlendi."
+    return True, f"{len(chunks_data)} parça işlendi ({model_key})."
 
-# --- VEKTÖR ARAMA (NUMPY DOT PRODUCT) ---
-
-
-def search_in_vectors(query, selected_files, top_k=5):
-    """Seçili dosyalarda matematiksel benzerlik araması yapar."""
-    model = get_embedding_model()
+# --- VEKTÖR ARAMA ---
+def search_in_vectors(query, selected_files, model_key="e5-base", top_k=5):
+    """Seçili modelin klasöründeki dosyalarda arama yapar."""
+    model = get_embedding_model(model_key)
     
-    # 1. Seçili dosyaları yükle
     dataframes = []
+    # Sadece seçili modelin klasörüne bakıyoruz!
+    model_folder = os.path.join(VECTORS_FOLDER, model_key)
+    
+    if not os.path.exists(model_folder):
+        return []
+
     for fname in selected_files:
-        pkl_path = os.path.join(VECTORS_FOLDER, f"{fname}.pkl")
+        pkl_path = os.path.join(model_folder, f"{fname}.pkl")
         if os.path.exists(pkl_path):
             dataframes.append(pd.read_pickle(pkl_path))
     
     if not dataframes:
         return []
 
-    # Verileri birleştir
     full_df = pd.concat(dataframes, ignore_index=True)
-    
-    # 2. Embeddingleri Matrise Çevir (Stacking)
     embeddings_matrix = np.stack(full_df["embedding"].values)
     
-    # 3. Sorguyu Vektöre Çevir
-    query_embedding = model.encode(query, convert_to_tensor=False)
+    # --- E5 İÇİN SORGU PREFIX AYARI ---
+    if "e5" in model_key:
+        query_text = "query: " + query
+        query_embedding = model.encode(query_text, convert_to_tensor=False, normalize_embeddings=True)
+    else:
+        query_embedding = model.encode(query, convert_to_tensor=False)
     
-    # 4. Dot Product (Benzerlik Hesaplama)
-    # Vektörleri normalize et (Cosine Similarity için)
-    embeddings_matrix = embeddings_matrix / (np.linalg.norm(embeddings_matrix, axis=1, keepdims=True) + 1e-10)
-    query_embedding = query_embedding / (np.linalg.norm(query_embedding) + 1e-10)
+    # Benzerlik Hesaplama (Dot Product)
+    # E5 normalize edildiği için Dot Product == Cosine Similarity
+    if "e5" not in model_key:
+        # MiniLM normalize edilmediyse burada edelim (garanti olsun)
+        embeddings_matrix = embeddings_matrix / (np.linalg.norm(embeddings_matrix, axis=1, keepdims=True) + 1e-10)
+        query_embedding = query_embedding / (np.linalg.norm(query_embedding) + 1e-10)
     
     scores = np.dot(embeddings_matrix, query_embedding)
-    
-    # 5. En iyi sonuçları bul
     top_indices = np.argsort(scores)[::-1][:top_k]
     
     results = []
     for idx in top_indices:
         row = full_df.iloc[idx]
         results.append({
-            "score": float(scores[idx]),           # float() çevirimi önemli
+            "score": float(scores[idx]),
             "text": row["text"],
             "filename": row["filename"],
-            "page_number": int(row["page_number"]) # BURASI DÜZELDİ: int64 -> int
+            "page_number": int(row["page_number"])
         })
         
     return results
@@ -133,8 +189,15 @@ def search_in_vectors(query, selected_files, top_k=5):
 
 @app.route("/files", methods=["GET"])
 def list_files():
-    """İşlenmiş dosyaları listeler."""
-    files = [f.replace(".pkl", "") for f in os.listdir(VECTORS_FOLDER) if f.endswith(".pkl")]
+    """Seçili modele ait dosyaları listeler."""
+    # Frontend'den ?model_key=e5-base şeklinde parametre gelir
+    model_key = request.args.get("model_key", "e5-base")
+    
+    folder = os.path.join(VECTORS_FOLDER, model_key)
+    if not os.path.exists(folder):
+        return jsonify([])
+        
+    files = [f.replace(".pkl", "") for f in os.listdir(folder) if f.endswith(".pkl")]
     return jsonify(files)
 
 @app.route("/upload", methods=["POST"])
@@ -144,6 +207,8 @@ def upload_file():
     
     file = request.files["file"]
     offset = int(request.form.get("offset", 0))
+    # Frontend'den seçili embedding modelini alıyoruz
+    embedding_model_key = request.form.get("embedding_model", "e5-base")
     
     if file.filename == "":
         return jsonify({"error": "Dosya seçilmedi"}), 400
@@ -152,41 +217,38 @@ def upload_file():
     file_path = os.path.join(UPLOAD_FOLDER, filename)
     file.save(file_path)
     
-    success, msg = process_and_save_pdf(file_path, filename, offset)
+    # Modeli parametre olarak gönderiyoruz
+    success, msg = process_and_save_pdf(file_path, filename, model_key=embedding_model_key, offset=offset)
     
     if success:
         return jsonify({"message": msg, "filename": filename}), 200
     else:
         return jsonify({"error": msg}), 500
 
-# app.py içindeki ask fonksiyonunu bununla değiştir:
-
 @app.route("/ask", methods=["POST"])
 def ask():
     data = request.get_json()
     question = data.get("question", "")
     selected_files = data.get("selected_files", [])
-    model_name = data.get("model_name", "llama3.1")
-    
-    # Dil seçimi ve uzunluk ayarları KALDIRILDI.
+    llm_model_name = data.get("model_name", "llama3.1") # Bu Qwen/Llama (LLM)
+    embedding_model_key = data.get("embedding_model", "e5-base") # Bu E5/MiniLM (Embedding)
     
     if not question or not selected_files:
         return jsonify({"error": "Soru ve dosya seçimi zorunlu."}), 400
 
     try:
-        # 1. Arama Yap
-        results = search_in_vectors(question, selected_files)
+        # 1. Arama Yap (Model key ile)
+        results = search_in_vectors(question, selected_files, model_key=embedding_model_key)
         
         if not results:
-            return jsonify({"answer": "Seçilen belgelerde ilgili bilgi bulunamadı.", "sources": []})
+            return jsonify({"answer": "Seçilen belgelerde (veya bu embedding modelinde) ilgili bilgi bulunamadı.", "sources": []})
 
         # 2. Context Oluştur
         context_text = ""
         for res in results:
             context_text += f"[Dosya: {res['filename']} | Sayfa: {res['page_number']}]\n{res['text']}\n\n"
 
-        # 3. Prompt Hazırla (Sadeleştirilmiş)
-        # Modele sadece bağlamı kullanmasını söylüyoruz, diline karışmıyoruz.
+        # 3. Prompt Hazırla
         prompt = f"""
         Aşağıdaki "BİLGİLER" kısmındaki metinleri kullanarak "SORU"yu cevapla. 
         Eğer bilgilerin içinde cevap yoksa "Bilmiyorum" de.
@@ -199,16 +261,15 @@ def ask():
         CEVAP:
         """
         
-        print(f"[LLM] Model: {model_name} | Soru: {question}")
+        print(f"[LLM] Model: {llm_model_name} | Embed: {embedding_model_key} | Soru: {question}")
         
         # 4. Ollama'ya Gönder
-        response = ollama.chat(model=model_name, messages=[
+        response = ollama.chat(model=llm_model_name, messages=[
             {'role': 'user', 'content': prompt},
         ])
         
         answer = response['message']['content']
         
-        # Kaynakları düzenle
         sources = [{
             "filename": r["filename"],
             "page_number": r["page_number"],

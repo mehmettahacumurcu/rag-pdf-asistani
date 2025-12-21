@@ -7,9 +7,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   
   // --- MODEL AYARLARI ---
-  // LLM (Cevap veren zeka)
   const [selectedModel, setSelectedModel] = useState("llama3.1");
-  // Embedding (Metni anlayan zeka) - Varsayılan E5
   const [embeddingModel, setEmbeddingModel] = useState("e5-base");
 
   // Server Ayarları (Ngrok)
@@ -24,14 +22,12 @@ function App() {
   const [offset, setOffset] = useState(0);
   const [uploading, setUploading] = useState(false);
 
-  // Embedding modeli değiştiğinde dosya listesini yenile
   useEffect(() => {
     fetchFiles();
   }, [embeddingModel]);
 
   const fetchFiles = async () => {
     try {
-      // Backend'e hangi modelin klasörüne bakacağını söylüyoruz
       const res = await fetch(`http://localhost:5000/files?model_key=${embeddingModel}`);
       const data = await res.json();
       setAvailableFiles(data);
@@ -47,7 +43,6 @@ function App() {
     const formData = new FormData();
     formData.append("file", uploadFile);
     formData.append("offset", offset);
-    // Backend'e hangi model ile vektörleştireceğini söylüyoruz
     formData.append("embedding_model", embeddingModel);
 
     let logs = "";
@@ -79,7 +74,7 @@ function App() {
       alert(logs);
       setUploadFile(null);
       setOffset(0);
-      fetchFiles(); // Listeyi yenile
+      fetchFiles();
 
     } catch (err) {
       alert("Yükleme hatası.");
@@ -116,8 +111,8 @@ function App() {
         body: JSON.stringify({
           question: input,
           selected_files: selectedFiles,
-          model_name: selectedModel,     // LLM (Qwen/Llama)
-          embedding_model: embeddingModel // Embedding (E5/MiniLM)
+          model_name: selectedModel,
+          embedding_model: embeddingModel
         }),
       });
 
@@ -156,20 +151,18 @@ function App() {
         <div className="sidebar-section">
           <h3>⚙️ Ayarlar</h3>
           
-          {/* EMBEDDING MODEL SEÇİMİ (YENİ) */}
           <div className="setting-group">
             <label className="setting-label">🧠 Embedding (Hafıza):</label>
             <select 
               value={embeddingModel} 
               onChange={(e) => {
                 setEmbeddingModel(e.target.value);
-                setSelectedFiles([]); // Model değişince seçimleri temizle
+                setSelectedFiles([]);
               }}
               className="model-select"
-              
             >
-              <option value="e5-base">E5-Base (Önerilen - Akıllı) 🌟</option>
-              <option value="minilm">MiniLM (Hızlı - Eski)</option>
+              <option value="e5-base">E5-Base (Multilingual)</option>
+              <option value="minilm">MiniLM</option>
             </select>
             <p style={{fontSize:"9px", color:"#666", marginTop:"2px"}}>
               *Değişince dosya listesi yenilenir.
@@ -184,10 +177,11 @@ function App() {
               className="model-select"
             >
               <option value="llama3.1">Llama 3.1 (8B)</option>
-              <option value="qwen2.5:3b">Qwen 2.5 (3B) - Hızlı</option>
-              <option value="qwen2.5:14b">Qwen 2.5 (14B) - Türkçe (Ağır)</option>
+              <option value="qwen2.5:7b">Qwen 2.5 (7B)</option> 
+              <option value="qwen2.5:3b">Qwen 2.5 (3B)</option>
               <option value="mistral-nemo">Mistral NeMo (12B)</option>
               <option value="solar">Solar (10.7B)</option>
+              <option value="qwen2.5:14b">Qwen 2.5 (14B)</option>
             </select>
           </div>
 
@@ -252,9 +246,6 @@ function App() {
               <div className="empty-state">
                 <h2>Merhaba! 👋</h2>
                 <p>Belgelerini seç ve sohbete başla.</p>
-                <p style={{fontSize:"12px", color:"#888", marginTop:"10px"}}>
-                   E5-Base modeli ile daha akıllı sonuçlar alabilirsiniz.
-                </p>
               </div>
             )}
             {messages.map((m, idx) => (
