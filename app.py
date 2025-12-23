@@ -16,7 +16,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(VECTORS_FOLDER, exist_ok=True)
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --- MODEL YÖNETİMİ ---
 # Desteklenen Modeller

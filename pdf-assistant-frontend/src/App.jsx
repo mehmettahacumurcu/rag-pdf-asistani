@@ -107,7 +107,9 @@ function App() {
     try {
       const res = await fetch(targetEndpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+                   "ngrok-skip-browser-warning": "true"
+         },
         body: JSON.stringify({
           question: input,
           selected_files: selectedFiles,
